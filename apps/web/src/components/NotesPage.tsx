@@ -2,10 +2,18 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import API, { setAuthToken } from "@/lib/api";
-import { FileText, Loader2, LogOut, Plus, Trash2 } from "lucide-react";
+import { Edit, FileText, Loader2, LogOut, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -23,6 +31,14 @@ export default function NotesPage() {
   const [loading, setLoading] = useState(true);
   const [creatingNote, setCreatingNote] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [deletingNoteId, setDeletingNoteId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [updatingNote, setUpdatingNote] = useState(false);
+  const [deletingNote, setDeletingNote] = useState(false);
   const router = useRouter();
 
   const fetchNotes = async () => {
@@ -57,12 +73,51 @@ export default function NotesPage() {
   };
 
   const deleteNote = async (id: number) => {
+    setDeletingNoteId(id);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingNoteId) return;
     try {
-      await API.delete(`/notes/${id}`);
+      setDeletingNote(true);
+      await API.delete(`/notes/${deletingNoteId}`);
       toast.success("Note deleted successfully!");
+      setDeleteModalOpen(false);
+      setDeletingNoteId(null);
       fetchNotes();
     } catch {
       toast.error("Failed to delete note");
+    } finally {
+      setDeletingNote(false);
+    }
+  };
+
+  const openEditModal = (note: Note) => {
+    setEditingNote(note);
+    setEditTitle(note.title);
+    setEditContent(note.content);
+    setEditModalOpen(true);
+  };
+
+  const updateNote = async () => {
+    if (!editingNote || !editTitle || !editContent) {
+      toast.error("Please fill in both title and content");
+      return;
+    }
+    try {
+      setUpdatingNote(true);
+      await API.put(`/notes/${editingNote.id}`, { title: editTitle, content: editContent });
+      toast.success("Note updated successfully!");
+      setEditModalOpen(false);
+      setEditingNote(null);
+      setEditTitle("");
+      setEditContent("");
+      fetchNotes();
+    } catch {
+      toast.error("Failed to update note");
+    } finally {
+      setUpdatingNote(false);
     }
   };
 
@@ -175,14 +230,24 @@ export default function NotesPage() {
                 <CardContent className="p-6">
                   <div className="flex justify-between items-start mb-3">
                     <h3 className="font-semibold text-lg line-clamp-1">{note.title}</h3>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => deleteNote(note.id)}
-                      className="text-muted-foreground hover:text-destructive transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEditModal(note)}
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteNote(note.id)}
+                        className="text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   <p className="text-sm text-muted-foreground line-clamp-3">{note.content}</p>
                 </CardContent>
@@ -190,6 +255,66 @@ export default function NotesPage() {
             ))}
           </div>
         )}
+
+        {/* Edit Note Modal */}
+        <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+          <DialogContent className="sm:max-w-125">
+            <DialogHeader>
+              <DialogTitle>Edit Note</DialogTitle>
+              <DialogDescription>Update your note title and content.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Title</label>
+                <Input
+                  placeholder="Enter note title"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Content</label>
+                <Textarea
+                  placeholder="Write your note here..."
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={5}
+                  className="resize-none"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button className="bg-muted" onClick={() => setEditModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={updateNote} disabled={updatingNote}>
+                {updatingNote ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Update Note
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Modal */}
+        <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Note</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this note? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button className="bg-muted" onClick={() => setDeleteModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmDelete} disabled={deletingNote}>
+                {deletingNote ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
