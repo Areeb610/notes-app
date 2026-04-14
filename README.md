@@ -114,7 +114,6 @@ The app will be available at `http://localhost:3000`
 - **User Authentication**: Register and login with JWT-based authentication
 - **Note Management**: Create, read, update, and delete notes
 - **Responsive Design**: Mobile-friendly interface with TailwindCSS
-- **Dark Mode**: Toggle between light and dark themes
 - **Modern UI**: Built with shadcn/ui components
 
 ## 🚧 Roadmap
