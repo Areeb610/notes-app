@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -13,9 +13,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import API, { setAuthToken } from "@/lib/api";
-import { Edit, FileText, Loader2, LogOut, Plus, Trash2 } from "lucide-react";
+import { Edit, FileText, Loader2, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 type Note = {
@@ -26,11 +26,7 @@ type Note = {
 
 export default function NotesPage() {
   const [notes, setNotes] = useState<Note[]>([]);
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
-  const [creatingNote, setCreatingNote] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
@@ -39,38 +35,41 @@ export default function NotesPage() {
   const [editContent, setEditContent] = useState("");
   const [updatingNote, setUpdatingNote] = useState(false);
   const [deletingNote, setDeletingNote] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
   const router = useRouter();
 
-  const fetchNotes = async () => {
+  const fetchNotes = useCallback(async (query?: string) => {
     try {
       setLoading(true);
-      const res = await API.get("/notes");
+      const url = query ? `/notes?query=${encodeURIComponent(query)}` : "/notes";
+      const res = await API.get(url);
       setNotes(res.data);
     } catch {
       toast.error("Failed to fetch notes");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const createNote = async () => {
-    if (!title || !content) {
-      toast.error("Please fill in both title and content");
-      return;
-    }
-    try {
-      setCreatingNote(true);
-      await API.post("/notes", { title, content });
-      setTitle("");
-      setContent("");
-      toast.success("Note created successfully!");
+  // Debounced search effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Fetch notes when debounced query changes
+  useEffect(() => {
+    if (debouncedQuery) {
+      fetchNotes(debouncedQuery);
+    } else {
       fetchNotes();
-    } catch {
-      toast.error("Failed to create note");
-    } finally {
-      setCreatingNote(false);
     }
-  };
+  }, [debouncedQuery, fetchNotes]);
 
   const deleteNote = async (id: number) => {
     setDeletingNoteId(id);
@@ -85,7 +84,11 @@ export default function NotesPage() {
       toast.success("Note deleted successfully!");
       setDeleteModalOpen(false);
       setDeletingNoteId(null);
-      fetchNotes();
+      if (searchQuery) {
+        fetchNotes(searchQuery);
+      } else {
+        fetchNotes();
+      }
     } catch {
       toast.error("Failed to delete note");
     } finally {
@@ -113,7 +116,11 @@ export default function NotesPage() {
       setEditingNote(null);
       setEditTitle("");
       setEditContent("");
-      fetchNotes();
+      if (searchQuery) {
+        fetchNotes(searchQuery);
+      } else {
+        fetchNotes();
+      }
     } catch {
       toast.error("Failed to update note");
     } finally {
@@ -121,16 +128,9 @@ export default function NotesPage() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      setLoggingOut(true);
-      document.cookie = "token=; path=/; max-age=0";
-      setAuthToken("");
-      toast.success("Logged out successfully");
-      router.push("/login");
-    } finally {
-      setLoggingOut(false);
-    }
+  const clearSearch = () => {
+    setSearchQuery("");
+    setIsSearching(false);
   };
 
   useEffect(() => {
@@ -154,49 +154,29 @@ export default function NotesPage() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="max-w-5xl mx-auto py-12 px-4">
-        <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-3">
-            <div className="bg-linear-to-br from-primary to-purple-600 p-3 rounded-xl shadow-lg">
-              <FileText className="h-6 w-6 text-white" />
-            </div>
-            <h1 className="text-4xl font-bold bg-linear-to-r from-primary to-purple-400 bg-clip-text text-transparent">NotesApp</h1>
-          </div>
-          <Button variant="outline" onClick={handleLogout} className="gap-2" disabled={loggingOut}>
-            {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-            Logout
-          </Button>
-        </div>
+    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 pt-8">
+      <div className="max-w-5xl mx-auto px-4">
+        <h1 className="text-3xl font-bold text-slate-100 mb-6">My Notes</h1>
 
-        <Card className="mb-8 border-slate-700 shadow-xl">
-          <CardHeader>
-            <CardTitle className="text-2xl">Create New Note</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Title</label>
-              <Input
-                placeholder="Enter note title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="h-11"
-              />
+        {/* Search Bar */}
+        <Card className="mb-6 border-slate-700 shadow-xl">
+          <CardContent className="p-4">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search notes by title or content..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              {searchQuery && (
+                <Button className="bg-red-500 h-10 hover:bg-red-600" onClick={clearSearch}>
+                  Clear
+                </Button>
+              )}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Content</label>
-              <Textarea
-                placeholder="Write your note here..."
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                rows={5}
-                className="resize-none"
-              />
-            </div>
-            <Button onClick={createNote} className="w-full h-11 gap-2" disabled={creatingNote}>
-              {creatingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Create Note
-            </Button>
           </CardContent>
         </Card>
 
@@ -220,7 +200,9 @@ export default function NotesPage() {
           <Card className="border-slate-700 shadow-xl">
             <CardContent className="py-12 text-center">
               <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No notes yet. Create your first note above!</p>
+              <p className="text-muted-foreground">
+                {isSearching ? "No notes yet! Create a new note to get started." : "No notes found matching your search."}
+              </p>
             </CardContent>
           </Card>
         ) : (

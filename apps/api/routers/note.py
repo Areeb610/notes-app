@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from db import get_db
 from models import Note
@@ -37,11 +38,18 @@ def create_note(
 # -----------------------
 @router.get("/", response_model=list[NoteOut])
 def get_notes(
+    query: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    notes = db.query(Note).filter(Note.owner_id == user.id).all()
-    return notes
+    notes_query = db.query(Note).filter(Note.owner_id == user.id)
+    
+    if query:
+        notes_query = notes_query.filter(
+            (Note.title.contains(query)) | (Note.content.contains(query))
+        )
+    
+    return notes_query.all()
 
 
 # -----------------------
