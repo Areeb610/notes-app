@@ -34,14 +34,17 @@ def create_note(
 
 
 # -----------------------
-# GET MY NOTES
+# GET MY NOTES (With Search and Pagination)
 # -----------------------
-@router.get("/", response_model=list[NoteOut])
+@router.get("/")
 def get_notes(
     query: Optional[str] = None,
+    page: int = 1,
+    limit: int = 5,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
+    offset = (page - 1) * limit
     notes_query = db.query(Note).filter(Note.owner_id == user.id)
     
     if query:
@@ -49,7 +52,16 @@ def get_notes(
             (Note.title.contains(query)) | (Note.content.contains(query))
         )
     
-    return notes_query.all()
+    total = notes_query.count()
+    notes = notes_query.offset(offset).limit(limit).all()
+    
+    return {
+        "notes": notes,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total + limit - 1) // limit
+    }
 
 
 # -----------------------
